@@ -1,0 +1,66 @@
+name: Robust Tailscale Setup with Info Output
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-tailscale:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Check RAM and SSD without error
+      shell: pwsh
+      run: |
+        $ramGB = [math]::round((Get-CimInstance -ClassName Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+        $freeSpaceGB = ([math]::round((Get-PSDrive -Name C).Free / 1GB, 2))
+
+        if ($ramGB -lt 32) {
+          Write-Warning "Warning: RAM under 32GB detected: $ramGB GB"
+        } else {
+          Write-Host "RAM OK: $ramGB GB"
+        }
+
+        if ($freeSpaceGB -lt 450) {
+          Write-Warning "Warning: SSD space under 450GB detected: $freeSpaceGB GB"
+        } else {
+          Write-Host "SSD OK: $freeSpaceGB GB"
+        }
+
+    - name: Download and install Tailscale silently
+      shell: pwsh
+      run: |
+        $installer = "$env:TEMP\tailscale-setup.exe"
+        Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-ipn-setup.exe" -OutFile $installer
+        Start-Process -FilePath $installer -ArgumentList '/quiet' -Wait
+
+    - name: Connect to Tailscale with auth key
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+      shell: pwsh
+      run: |
+        $tailscaleExe = "C:\Program Files (x86)\Tailscale IPN\tailscale.exe"
+        & $tailscaleExe up --auth-key=$env:TAILSCALE_AUTH_KEY | Out-Null
+        
+        # Extract IP addresses
+        $status = & $tailscaleExe status | Out-String
+        $ipLine = $status -split "`n" | Where-Object { $_ -match '100\.' } | Select-Object -First 1
+        if ($ipLine) {
+          $ip = ($ipLine -split '\s+')[0]
+          Write-Host "Connected Tailscale IP: $ip"
+        } else {
+          Write-Warning "Could not determine Tailscale IP"
+        }
+        Write-Host "Auth Key used (hidden for security): ***"
+
+    - name: Show useful connection info
+      shell: pwsh
+      run: |
+        Write-Host "==============================="
+        Write-Host "Tailscale VPN setup complete ✅"
+        Write-Host "Your Tailscale IP is displayed above."
+        Write-Host "Keep your auth key secret! Use GitHub Secrets for storage."
+        Write-Host "==============================="
+        
