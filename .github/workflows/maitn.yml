@@ -1,0 +1,43 @@
+name: Setup Tailscale Windows with RAM and SSD Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-ram-ssd-and-connect:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Check RAM and SSD Space
+      shell: pwsh
+      run: |
+        $ramGB = [math]::round((Get-CimInstance -ClassName Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+        $freeSpaceGB = ([math]::round((Get-PSDrive -Name C).Free / 1GB, 2))
+        if ($ramGB -lt 32) {
+          Write-Warning "ATENȚIE: Memoria RAM este sub 32GB: $ramGB GB, dar se continuă."
+        } else {
+          Write-Host "RAM OK: $ramGB GB"
+        }
+        if ($freeSpaceGB -lt 450) {
+          Write-Warning "ATENȚIE: Spațiu SSD este sub 450GB: $freeSpaceGB GB, dar se continuă."
+        } else {
+          Write-Host "SSD OK: $freeSpaceGB GB"
+        }
+
+    - name: Install Tailscale
+      run: |
+        Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-ipn-setup.exe" -OutFile tailscale-install.exe
+        Start-Process -FilePath .\tailscale-install.exe -ArgumentList "/quiet" -Wait
+      shell: pwsh
+
+    - name: Connect Tailscale using auth key
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+      run: |
+        & "C:\Program Files (x86)\Tailscale IPN\tailscale.exe" up --auth-key=$env:TAILSCALE_AUTH_KEY
+        & "C:\Program Files (x86)\Tailscale IPN\tailscale.exe" status
+      shell: pwsh
+      
