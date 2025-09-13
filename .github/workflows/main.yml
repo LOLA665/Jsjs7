@@ -1,0 +1,42 @@
+name: Setup Tailscale Windows with RTX 4090 Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-rtx4090-and-connect:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Check SSD Space and RTX 4090 GPU
+      shell: pwsh
+      run: |
+        $freeSpaceGB = ([math]::round((Get-PSDrive -Name C).Free / 1GB, 2))
+        if ($freeSpaceGB -lt 450) {
+          Write-Error "EROARE: Spațiu SSD insuficient: $freeSpaceGB GB"
+          exit 1
+        }
+        $gpu = Get-WmiObject Win32_VideoController | Where-Object { $_.Name -match "RTX 4090" }
+        if (-not $gpu) {
+          Write-Error "EROARE: Nu a fost detectat GPU NVIDIA RTX 4090"
+          exit 1
+        }
+        Write-Host "Spațiu SSD și RTX 4090 verificați OK: $freeSpaceGB GB, GPU: $($gpu.Name)"
+
+    - name: Install Tailscale
+      run: |
+        Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-ipn-setup.exe" -OutFile tailscale-install.exe
+        Start-Process -FilePath .\tailscale-install.exe -ArgumentList "/quiet" -Wait
+      shell: pwsh
+
+    - name: Connect Tailscale using auth key
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+      run: |
+        & "C:\Program Files (x86)\Tailscale IPN\tailscale.exe" up --auth-key=$env:TAILSCALE_AUTH_KEY
+        & "C:\Program Files (x86)\Tailscale IPN\tailscale.exe" status
+      shell: pwsh
+      
