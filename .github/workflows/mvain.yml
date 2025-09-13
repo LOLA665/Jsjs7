@@ -1,0 +1,47 @@
+name: Tailscale Setup on Windows Server 2025 with IP and Auth Key Display
+
+on:
+  workflow_dispatch:
+
+jobs:
+  tailscale-setup:
+    runs-on: windows-2022
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Download and install Tailscale silently
+      shell: pwsh
+      run: |
+        $installer = "$env:TEMP\tailscale-install.exe"
+        Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-ipn-setup.exe" -OutFile $installer
+        Start-Process -FilePath $installer -ArgumentList '/quiet' -Wait
+
+    - name: Connect to Tailscale using auth key
+      env:
+        TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+      shell: pwsh
+      run: |
+        $tailscalePath = "C:\Program Files (x86)\Tailscale IPN\tailscale.exe"
+        & $tailscalePath up --auth-key=$env:TAILSCALE_AUTH_KEY | Out-Null
+
+        $status = & $tailscalePath status | Out-String
+        $ipLine = $status -split "`n" | Where-Object { $_ -match '100\.' } | Select-Object -First 1
+        if ($ipLine) {
+          $ip = ($ipLine -split '\s+')[0]
+          Write-Host "Connected Tailscale IP: $ip"
+        } else {
+          Write-Warning "Could not determine Tailscale IP"
+        }
+        Write-Host "Used Auth Key (password): $env:TAILSCALE_AUTH_KEY"
+
+    - name: Display useful connection info
+      shell: pwsh
+      run: |
+        Write-Host "==============================="
+        Write-Host "Tailscale VPN setup complet pe Windows Server 2025 ✅"
+        Write-Host "Adresa ta IP Tailscale și cheia sunt afișate mai sus."
+        Write-Host "Păstrează cheia ta de autentificare în siguranță în GitHub Secrets."
+        Write-Host "==============================="
+        
